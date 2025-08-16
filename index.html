@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Page Replacement Algorithm Simulator</title>
+  <style>
+    :root{
+      --bg:#0b1020; --card:#12182b; --muted:#8aa1b1; --text:#e8f0f7; --accent:#76d1ff; --good:#5be37b; --bad:#ff7a7a;
+      --shadow:0 10px 30px rgba(0,0,0,.35);
+    }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,"Helvetica Neue",Arial; background:linear-gradient(120deg,#0b1020,#0e1430 60%,#0a0f25); color:var(--text)}
+    header{padding:28px 20px 10px; text-align:center}
+    h1{margin:0 0 8px; font-size:clamp(24px,2.8vw,36px); letter-spacing:.3px}
+    .sub{color:var(--muted); font-size:14px}
+    .container{max-width:1100px; margin:20px auto 60px; padding:0 16px}
+    .panel{background:var(--card); border:1px solid rgba(255,255,255,.06); border-radius:18px; padding:18px; box-shadow:var(--shadow)}
+    .grid{display:grid; grid-template-columns:1.2fr .8fr; gap:16px}
+    .stack{display:flex; gap:10px; flex-wrap:wrap}
+    label{display:block; font-size:13px; color:var(--muted); margin-bottom:6px}
+    input, select, button, textarea{border-radius:12px; border:1px solid rgba(255,255,255,.08); background:#0e1530; color:var(--text)}
+    input, select, textarea{padding:12px 14px; width:100%; outline:none}
+    textarea{min-height:70px; resize:vertical}
+    button{padding:12px 16px; cursor:pointer; border:none; background:#162044; transition:.2s transform, .2s filter; box-shadow:var(--shadow)}
+    button:hover{transform:translateY(-1px)}
+    .primary{background:linear-gradient(135deg,#1b63ff,#24b6ff); color:white}
+    .ghost{background:transparent; border:1px dashed rgba(255,255,255,.15)}
+    .accent{color:#00111a; background:linear-gradient(135deg,#7ee0ff,#e1f7ff)}
+    .kpi{display:grid; grid-template-columns:repeat(5,1fr); gap:12px; margin-top:14px}
+    .card{background:#0d142e; border:1px solid rgba(255,255,255,.06); border-radius:16px; padding:14px}
+    .k{font-size:12px; color:var(--muted)}
+    .v{font-size:22px; font-weight:700; margin-top:4px}
+    .tableWrap{margin-top:18px; overflow:auto; border-radius:14px; border:1px solid rgba(255,255,255,.08)}
+    table{border-collapse:separate; border-spacing:0; width:100%; font-size:14px}
+    thead th{position:sticky; top:0; background:#0e1633; z-index:1}
+    th, td{padding:10px 12px; border-bottom:1px solid rgba(255,255,255,.06); white-space:nowrap; text-align:center}
+    tr:nth-child(even) td{background:rgba(255,255,255,.02)}
+    .tag{display:inline-flex; align-items:center; gap:6px; padding:6px 10px; border-radius:999px; font-size:12px}
+    .hit{background:rgba(91,227,123,.12); color:var(--good)}
+    .miss{background:rgba(255,122,122,.12); color:var(--bad)}
+    .foot{display:flex; gap:10px; align-items:center; justify-content:space-between; margin-top:14px}
+    .right{display:flex; gap:10px; align-items:center}
+    .small{font-size:12px; color:var(--muted)}
+    .examples button{font-size:12px}
+    .pill{border-radius:999px; padding:8px 12px}
+    .muted{color:var(--muted)}
+    .rowfade{animation:fade .35s ease}
+    @keyframes fade{from{opacity:.4; transform:translateY(2px)} to{opacity:1; transform:none}}
+    .footer{margin-top:28px; text-align:center; color:var(--muted); font-size:12px}
+    .hl{color:var(--accent)}
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Page Replacement Algorithm Simulator</h1>
+    <div class="sub">Visualize <span class="hl">FIFO</span>, <span class="hl">LRU</span>, <span class="hl">MRU</span>, <span class="hl">Optimal (MIN)</span>, and <span class="hl">Clock (Second Chance)</span> — with faults, hits, and step‑by‑step frames.</div>
+  </header>
+  <div class="container">
+    <div class="panel grid">
+      <div>
+        <label for="refs">Reference String <span class="muted">(comma or space separated)</span></label>
+        <textarea id="refs" placeholder="e.g. 7, 0, 1, 2, 0, 3, 0, 4, 2, 3, 0, 3, 2"></textarea>
+      </div>
+      <div>
+        <div class="stack">
+          <div style="flex:1">
+            <label for="frames">Frames</label>
+            <input id="frames" type="number" min="1" max="12" value="3" />
+          </div>
+          <div style="flex:1">
+            <label for="algo">Algorithm</label>
+            <select id="algo">
+              <option value="FIFO">FIFO</option>
+              <option value="LRU">LRU</option>
+              <option value="MRU">MRU</option>
+              <option value="OPT">Optimal (MIN)</option>
+              <option value="CLOCK">Clock (Second Chance)</option>
+            </select>
+          </div>
+        </div>
+        <div class="stack" style="margin-top:10px">
+          <button class="primary" id="run">Run Simulation</button>
+          <button class="ghost" id="stepPrev">◀ Prev</button>
+          <button class="ghost" id="stepNext">Next ▶</button>
+          <button class="ghost" id="downloadCsv">Export CSV</button>
+        </div>
+        <div class="examples stack" style="margin-top:10px">
+          <span class="small">Examples:</span>
+          <button class="pill" data-ex="7 0 1 2 0 3 0 4 2 3 0 3 2">Classic 7‑0‑1‑…</button>
+          <button class="pill" data-ex="1 2 3 4 1 2 5 1 2 3 4 5">Belady Case</button>
+          <button class="pill" data-ex="0 1 2 3 0 1 4 0 1 2 3 4">Working Set</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="kpi">
+      <div class="card"><div class="k">Total References</div><div class="v" id="kRefs">—</div></div>
+      <div class="card"><div class="k">Page Faults</div><div class="v" id="kFaults">—</div></div>
+      <div class="card"><div class="k">Hits</div><div class="v" id="kHits">—</div></div>
+      <div class="card"><div class="k">Hit Ratio</div><div class="v" id="kHitRatio">—</div></div>
+      <div class="card"><div class="k">Fault Ratio</div><div class="v" id="kFaultRatio">—</div></div>
+    </div>
+
+    <div class="tableWrap panel" id="tableWrap" style="display:none">
+      <table id="resultTable"></table>
+      <div class="foot">
+        <div class="small">Step <span id="currStep">0</span>/<span id="totalSteps">0</span></div>
+        <div class="right small">Use Next/Prev to step through the simulation.</div>
+      </div>
+    </div>
+
+    <div class="footer">Built for students of OS and paging. Free to use & share. ✨</div>
+  </div>
+
+  <script>
+    const $ = (id)=>document.getElementById(id)
+
+    const parseRefs = (raw)=> raw
+      .replace(/\n/g,' ')
+      .split(/[ ,]+/)
+      .filter(Boolean)
+      .map(x=>Number(x))
+      .filter(n=>Number.isFinite(n))
+
+    function simulateFIFO(refs, frameCount){
+      const frames = Array(frameCount).fill(null)
+      const queue = []
+      const refbit = Array(frameCount).fill(0)
+      let faults=0, hits=0
+      const steps=[]
+
+      for(let i=0;i<refs.length;i++){
+        const r=refs[i]
+        let idx = frames.indexOf(r)
+        let hit = idx!==-1
+        let replaced = null
+        if(hit){
+          hits++
+        }else{
+          faults++
+          let empty = frames.indexOf(null)
+          if(empty!==-1){
+            frames[empty]=r
+            queue.push(empty)
+          }else{
+            const victimIndex = queue.shift()
+            replaced = frames[victimIndex]
+            frames[victimIndex]=r
+            queue.push(victimIndex)
+          }
+        }
+        steps.push(snap(i, r, frames, hit, replaced, faults))
+      }
+      return {steps, faults, hits}
+    }
+
+    function simulateLRU(refs, frameCount){
+      const frames = Array(frameCount).fill(null)
+      const lastUsed = new Map()
+      let faults=0, hits=0
+      const steps=[]
+
+      for(let i=0;i<refs.length;i++){
+        const r=refs[i]
+        let idx = frames.indexOf(r)
+        let hit = idx!==-1
+        let replaced = null
+        if(hit){
+          hits++
+          lastUsed.set(r, i)
+        }else{
+          faults++
+          let empty = frames.indexOf(null)
+          if(empty!==-1){
+            frames[empty]=r
+            lastUsed.set(r, i)
+          }else{
+            let victim = frames[0], minIdx = lastUsed.get(frames[0])
+            for(const f of frames){
+              const when = lastUsed.get(f)
+              if(when < minIdx){
+                minIdx = when; victim = f
+              }
+            }
+            replaced = victim
+            const vIndex = frames.indexOf(victim)
+            frames[vIndex]=r
+            lastUsed.delete(victim)
+            lastUsed.set(r, i)
+          }
+        }
+        steps.push(snap(i, r, frames, hit, replaced, faults))
+      }
+      return {steps, faults, hits}
+    }
+
+    function simulateMRU(refs, frameCount){
+      const frames = Array(frameCount).fill(null)
+      const lastUsed = new Map()
+      let faults=0, hits=0
+      const steps=[]
+
+      for(let i=0;i<refs.length;i++){
+        const r=refs[i]
+        let idx = frames.indexOf(r)
+        let hit = idx!==-1
+        let replaced = null
+        if(hit){
+          hits++
+          lastUsed.set(r, i)
+        }else{
+          faults++
+          let empty = frames.indexOf(null)
+          if(empty!==-1){
+            frames[empty]=r
+            lastUsed.set(r, i)
+          }else{
+            // Pick MOST recently used page
+            let victim = frames[0], maxIdx = lastUsed.get(frames[0])
+            for(const f of frames){
+              const when = lastUsed.get(f)
+              if(when > maxIdx){
+                maxIdx = when; victim = f
+              }
+            }
+            replaced = victim
+            const vIndex = frames.indexOf(victim)
+            frames[vIndex]=r
+            lastUsed.delete(victim)
+            lastUsed.set(r, i)
+          }
+        }
+        steps.push(snap(i, r, frames, hit, replaced, faults))
+      }
+      return {steps, faults, hits}
+    }
+
+    function simulateOPT(refs, frameCount){
+      const frames = Array(frameCount).fill(null)
+      let faults=0, hits=0
+      const steps=[]
+
+      for(let i=0;i<refs.length;i++){
+        const r=refs[i]
+        let idx = frames.indexOf(r)
+        let hit = idx!==-1
+        let replaced=null
+        if(hit){
+          hits++
+        }else{
+          faults++
+          let empty = frames.indexOf(null)
+          if(empty!==-1){
+            frames[empty]=r
+          }else{
+            let farthest=-1, victimIndex=0
+            for(let fi=0; fi<frames.length; fi++){
+              const val=frames[fi]
+              let next = refs.slice(i+1).indexOf(val)
+              next = next===-1 ? Infinity : next
+              if(next>farthest){farthest=next; victimIndex=fi}
+            }
+            replaced = frames[victimIndex]
+            frames[victimIndex]=r
+          }
+        }
+        steps.push(snap(i, r, frames, hit, replaced, faults))
+      }
+      return {steps, faults, hits}
+    }
+
+    function simulateCLOCK(refs, frameCount){
+      const frames = Array(frameCount).fill(null)
+      const refbit = Array(frameCount).fill(0)
+      let hand=0
+      let faults=0, hits=0
+      const steps=[]
+
+      for(let i=0;i<refs.length;i++){
+        const r=refs[i]
+        let idx = frames.indexOf(r)
+        let hit = idx!==-1
+        let replaced=null
+        if(hit){
+          hits++
+          refbit[idx]=1
+        }else{
+          faults++
+          let empty = frames.indexOf(null)
+          if(empty!==-1){
+            frames[empty]=r
+            refbit[empty]=1
+            hand = (empty+1)%frameCount
+          }else{
+            while(refbit[hand]===1){
+              refbit[hand]=0
+              hand=(hand+1)%frameCount
+            }
+            replaced = frames[hand]
+            frames[hand]=r
+            refbit[hand]=1
+            hand=(hand+1)%frameCount
+          }
+        }
+        steps.push(snap(i, r, frames, hit, replaced, faults))
+      }
+      return {steps, faults, hits}
+    }
+
+    function snap(stepIndex, ref, frames, hit, replaced, faults){
+      return {
+        step: stepIndex+1,
+        ref,
+        frames: [...frames],
+        hit,
+        replaced: replaced===null?"—":String(replaced),
+        faults
+      }
+    }
+
+    function run(){
+      const refs = parseRefs($("refs").value)
+      const frameCount = Math.max(1, Math.min(12, Number($("frames").value)||3))
+      const algo = $("algo").value
+      if(refs.length===0){ alert("Please enter a reference string."); return }
+
+      let result
+      if(algo==='FIFO') result=simulateFIFO(refs, frameCount)
+      if(algo==='LRU') result=simulateLRU(refs, frameCount)
+      if(algo==='MRU') result=simulateMRU(refs, frameCount)
+      if(algo==='OPT') result=simulateOPT(refs, frameCount)
+      if(algo==='CLOCK') result=simulateCLOCK(refs, frameCount)
+
+      render(result, frameCount)
+    }
+
+    function render({steps, faults, hits}, frameCount){
+      const table = $("resultTable")
+      table.innerHTML = ''
+      const thead = document.createElement('thead')
+      const hr = document.createElement('tr')
+      ;['Step','Reference',...Array.from({length:frameCount},(_,i)=>`Frame ${i}`),'Hit/Miss','Replaced','Faults so far']
+        .forEach(h=>{ const th=document.createElement('th'); th.textContent=h; hr.appendChild(th) })
+      thead.appendChild(hr)
+      table.appendChild(thead)
+
+      const tbody=document.createElement('tbody')
+      steps.forEach(s=>{
+        const tr=document.createElement('tr'); tr.className='rowfade'
+        const cols=[s.step, s.ref, ...s.frames.map(f=> f===null?'—':f), s.hit? 'Hit':'Miss', s.replaced, s.faults]
+        cols.forEach((c,ci)=>{
+          const td=document.createElement('td')
+          if(ci===2 || (ci>2 && ci<=2+steps.framesCount)) td.style.fontFamily='ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace'
+          td.textContent=c
+          tr.appendChild(td)
+        })
+        const tag = document.createElement('span')
+        tag.className = 'tag ' + (s.hit? 'hit':'miss')
+        tag.textContent = s.hit? 'HIT':'MISS'
+        tr.children[2+frameCount].innerHTML=''
+        tr.children[2+frameCount].appendChild(tag)
+        tbody.appendChild(tr)
+      })
+      table.appendChild(tbody)
+
+      // KPI
+      const total=steps.length
+      $("kRefs").textContent=total
+      $("kFaults").textContent=faults
+      $("kHits").textContent=hits
+      
+      // Calculate ratios (rounded to 3 decimal places)
+      const hitRatio = total ? (hits / total).toFixed(3) : '—'
+      const faultRatio = total ? (faults / total).toFixed(3) : '—'
+      
+      $("kHitRatio").textContent = hitRatio
+      $("kFaultRatio").textContent = faultRatio
+
+      $("tableWrap").style.display='block'
+      state.steps = steps
+      state.frameCount = frameCount
+      state.cursor = steps.length?1:0
+      $("currStep").textContent = state.cursor
+      $("totalSteps").textContent = steps.length
+      scrollToRow()
+    }
+
+    function step(delta){
+      if(!state.steps.length) return
+      state.cursor = Math.max(1, Math.min(state.steps.length, state.cursor + delta))
+      $("currStep").textContent = state.cursor
+      scrollToRow()
+    }
+
+    function scrollToRow(){
+      const tbody = $("resultTable").querySelector('tbody')
+      if(!tbody) return
+      const row = tbody.children[state.cursor-1]
+      if(row) row.scrollIntoView({behavior:'smooth', block:'center'})
+    }
+
+    function toCSV(){
+      if(!state.steps.length) return
+      const header = ['Step','Reference',...Array.from({length:state.frameCount},(_,i)=>`Frame ${i}`),'Hit/Miss','Replaced','Faults so far']
+      const rows = state.steps.map(s=>[
+        s.step, s.ref, ...s.frames.map(f=>f===null?'':f), s.hit?'Hit':'Miss', s.replaced==='—'?'':s.replaced, s.faults
+      ])
+      const csv = [header, ...rows].map(r=>r.map(String).map(v=>/[,"\n]/.test(v)?`"${v.replace(/"/g,'""')}"`:v).join(',')).join('\n')
+      const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'})
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href=url; a.download='page_replacement_report.csv'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url)
+    }
+
+    const state = {steps:[], frameCount:0, cursor:0}
+
+    $("run").addEventListener('click', run)
+    $("stepNext").addEventListener('click', ()=>step(1))
+    $("stepPrev").addEventListener('click', ()=>step(-1))
+    $("downloadCsv").addEventListener('click', toCSV)
+
+    document.querySelectorAll('.examples button').forEach(b=>{
+      b.addEventListener('click', ()=>{
+        $("refs").value = b.dataset.ex
+      })
+    })
+
+  </script>
+</body>
+</html>
